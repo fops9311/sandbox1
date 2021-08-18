@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	testStr := "(2*2*2+1)"
+	testStr := "(2*2*2)"
 	ops := OperationAnalizerGroup{
 		ops: []OperationAnalizer{
 			{
@@ -24,6 +24,11 @@ func main() {
 				rightStringTransform: func(s string) string {
 					return s
 				},
+				traverseInterator: func(x float32) func(y float32) float32 {
+					return func(y float32) float32 {
+						return x + y
+					}
+				},
 			},
 			{
 				name: "-",
@@ -37,6 +42,11 @@ func main() {
 					return s
 				},
 				rightStringTransform: ReverceSign,
+				traverseInterator: func(x float32) func(y float32) float32 {
+					return func(y float32) float32 {
+						return x + y
+					}
+				},
 			},
 		},
 		next: &OperationAnalizerGroup{
@@ -55,6 +65,11 @@ func main() {
 					rightStringTransform: func(s string) string {
 						return s
 					},
+					traverseInterator: func(x float32) func(y float32) float32 {
+						return func(y float32) float32 {
+							return x * y
+						}
+					},
 				},
 				{
 					name: "/",
@@ -70,12 +85,22 @@ func main() {
 					rightStringTransform: func(s string) string {
 						return s
 					},
+					traverseInterator: func(x float32) func(y float32) float32 {
+						return func(y float32) float32 {
+							return x * y
+						}
+					},
 				},
 			},
 		},
 	}
 	n := Analize(testStr, ops)
-	fmt.Println(n)
+	n.traverseInterator = func(x float32) func(y float32) float32 {
+		return func(y float32) float32 {
+			return x * y
+		}
+	}
+	fmt.Println("!!!N:", n)
 
 	fmt.Println(n.Traverse())
 	fmt.Println(n.value)
@@ -95,6 +120,7 @@ type OperationAnalizer struct {
 	rightTransform       func(x float32) float32
 	leftStringTransform  func(s string) string
 	rightStringTransform func(s string) string
+	traverseInterator    func(x float32) func(y float32) float32
 	next                 *OperationAnalizer
 }
 type OperationAnalizerGroup struct {
@@ -117,17 +143,40 @@ func Analize(s string, oag OperationAnalizerGroup) *Node {
 	i := 0
 	for ; i < len(s); i++ {
 		for _, op := range oag.ops {
+			var cbp int
 			if s[i:i+1] == "(" {
+				var traverseInter func(x float32) func(y float32) float32
 				newS := s[i:]
-				cbp, _ := closingBracketPos(newS)
-				node.nodes = append(node.nodes, Analize(newS[i+1:cbp], oag))
+				cbp, _ = closingBracketPos(newS)
+				if cbp+2 < len(newS) {
+					if newS[cbp+1:cbp+2] == "+" || newS[cbp+1:cbp+2] == "-" {
+						traverseInter = func(x float32) func(y float32) float32 {
+							return func(y float32) float32 {
+								return x + y
+							}
+						}
+					} else {
+						traverseInter = func(x float32) func(y float32) float32 {
+							return func(y float32) float32 {
+								return x * y
+							}
+						}
+					}
+				}
+				left := Analize(newS[i+1:cbp], oag)
+				left.traverseInterator = traverseInter
+				right := Analize(newS[cbp+1:], oag)
+				right.traverseInterator = traverseInter
+				node.nodes = append(node.nodes, left)
+				node.nodes = append(node.nodes, right)
 				fmt.Println("i:", i)
 				i += cbp
 				fmt.Println("i:", i)
+				return node
 			}
 
 			if s[i:i+1] == op.name {
-
+				node.traverseInterator = op.traverseInterator
 				left := Analize(op.leftStringTransform(s[:i]), oag)
 				left.transform = op.leftTransform
 				node.nodes = append(node.nodes, left)

@@ -7,7 +7,11 @@ import (
 )
 
 func main() {
-	testStr := "(2*2*2)"
+	testStr := "1+(5+5)*(+1+2)+1+1"
+	t := "1+1+1"
+	fmt.Println(priorityExpressionBracketing(t))
+	testStr = addPlusAfterBracket(testStr)
+	fmt.Println(testStr)
 	ops := OperationAnalizerGroup{
 		ops: []OperationAnalizer{
 			{
@@ -67,6 +71,9 @@ func main() {
 					},
 					traverseInterator: func(x float32) func(y float32) float32 {
 						return func(y float32) float32 {
+							if y == 0 {
+								y = 1
+							}
 							return x * y
 						}
 					},
@@ -87,6 +94,9 @@ func main() {
 					},
 					traverseInterator: func(x float32) func(y float32) float32 {
 						return func(y float32) float32 {
+							if y == 0 {
+								y = 1
+							}
 							return x * y
 						}
 					},
@@ -95,11 +105,7 @@ func main() {
 		},
 	}
 	n := Analize(testStr, ops)
-	n.traverseInterator = func(x float32) func(y float32) float32 {
-		return func(y float32) float32 {
-			return x * y
-		}
-	}
+
 	fmt.Println("!!!N:", n)
 
 	fmt.Println(n.Traverse())
@@ -134,11 +140,6 @@ func Analize(s string, oag OperationAnalizerGroup) *Node {
 		transform: func(x float32) float32 {
 			return x
 		},
-		traverseInterator: func(x float32) func(y float32) float32 {
-			return func(y float32) float32 {
-				return x + y
-			}
-		},
 	}
 	i := 0
 	for ; i < len(s); i++ {
@@ -148,25 +149,29 @@ func Analize(s string, oag OperationAnalizerGroup) *Node {
 				var traverseInter func(x float32) func(y float32) float32
 				newS := s[i:]
 				cbp, _ = closingBracketPos(newS)
+				traverseInter = func(x float32) func(y float32) float32 {
+					return func(y float32) float32 {
+						return x + y
+					}
+				}
 				if cbp+2 < len(newS) {
-					if newS[cbp+1:cbp+2] == "+" || newS[cbp+1:cbp+2] == "-" {
+					if newS[cbp+1:cbp+2] == "*" || newS[cbp+1:cbp+2] == "/" {
 						traverseInter = func(x float32) func(y float32) float32 {
 							return func(y float32) float32 {
-								return x + y
-							}
-						}
-					} else {
-						traverseInter = func(x float32) func(y float32) float32 {
-							return func(y float32) float32 {
+								if y == 0 {
+									y = 1
+								}
 								return x * y
 							}
 						}
+
 					}
 				}
 				left := Analize(newS[i+1:cbp], oag)
-				left.traverseInterator = traverseInter
 				right := Analize(newS[cbp+1:], oag)
-				right.traverseInterator = traverseInter
+				//left.traverseInterator = traverseInter
+				//right.traverseInterator = traverseInter
+				node.traverseInterator = traverseInter
 				node.nodes = append(node.nodes, left)
 				node.nodes = append(node.nodes, right)
 				fmt.Println("i:", i)
@@ -179,12 +184,14 @@ func Analize(s string, oag OperationAnalizerGroup) *Node {
 				node.traverseInterator = op.traverseInterator
 				left := Analize(op.leftStringTransform(s[:i]), oag)
 				left.transform = op.leftTransform
+				//left.traverseInterator = op.traverseInterator
 				node.nodes = append(node.nodes, left)
 
 				fmt.Println(op.rightStringTransform(s[i+1:]))
 
 				right := Analize(op.rightStringTransform((s[i+1:])), oag)
 				right.transform = op.rightTransform
+				//right.traverseInterator = op.traverseInterator
 				node.nodes = append(node.nodes, right)
 
 				return node
@@ -209,6 +216,7 @@ func Analize(s string, oag OperationAnalizerGroup) *Node {
 	node.value = float32(parseFloat)
 	return node
 }
+
 func (n *Node) Traverse() (result float32) {
 	fmt.Println(n)
 
@@ -222,10 +230,15 @@ func (n *Node) Traverse() (result float32) {
 	//fmt.Println(result)
 	return result
 }
+
 func ReverceSign(s string) string {
 	b := []byte(s)
 	mp := "-+"
 	for i := 0; i < len(b); i++ {
+		if s[i:i+1] == "(" {
+			newPos, _ := closingBracketPos(s[i:])
+			i += newPos
+		}
 		if s[i:i+1] == "+" {
 			b[i] = mp[0]
 		}
@@ -235,10 +248,23 @@ func ReverceSign(s string) string {
 	}
 	return string(b)
 }
+func addPlusAfterBracket(s string) string {
+	result := make([]byte, 0)
+	b := []byte(s)
+	search := "(+-"
+	for i, v := range b {
+		result = append(result, v)
+		if v == search[0] &&
+			(b[i+1] != search[1] || b[i+1] != search[2]) {
+			result = append(result, search[1])
+		}
+	}
+	return string(result)
+}
 func closingBracketPos(s string) (pos int, err error) {
 	var counter int
 	if s[:1] != "(" {
-		return 0, errors.New("Must start with a \"(\"")
+		return 0, errors.New("must start with a \"(\"")
 	}
 	for i := 0; i < len(s); i++ {
 		if s[i:i+1] == "(" {
@@ -251,5 +277,32 @@ func closingBracketPos(s string) (pos int, err error) {
 			return i, nil
 		}
 	}
-	return pos, errors.New("No closing bracket found")
+	return pos, errors.New("no closing bracket found")
+}
+func priorityExpressionBracketing(s string) string {
+	result := make([]byte, 0)
+	b := []byte(s)
+	search := "(+-)"
+	flip := false
+	for i, v := range b {
+		result = append(result, v)
+		if s[i:i+1] == "(" {
+			newPos, _ := closingBracketPos(s[i:])
+			i += newPos
+		}
+		if v == search[1] || v == search[2] {
+			if !flip {
+				result = append(result, search[0])
+			}
+			if flip {
+				result = append(result, search[3])
+			}
+			flip = !flip
+		}
+
+	}
+	if flip {
+		result = append(result, search[3])
+	}
+	return string(result)
 }

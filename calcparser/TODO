@@ -1,0 +1,4 @@
+1. Add expression analizer
+    Analize +- first. if expressions found apply Expression iterator for +-
+    Analize */ next, apply Expression iterator for */
+    Iterate

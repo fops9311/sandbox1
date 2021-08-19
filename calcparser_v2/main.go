@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 )
 
 func main() {
-	t, _ := Analize("1/0", DefaultOAG())
-	t.Traverse()
 	OAG := DefaultOAG()
 	e := echo.New()
 	e.GET("/", func(c echo.Context) error {
@@ -56,21 +55,23 @@ type Node struct {
 	nodes     []*Node
 }
 type OperationAnalizer struct {
-	name      string
+	op        string
 	Aggregate func(x float32, first bool) func(y float32) float32
 }
 type OperationAnalizerGroup struct {
 	ops []OperationAnalizer
 }
 
+//Analize creates graph of expression strings and aggregate functions
 func Analize(s string, oag OperationAnalizerGroup) (res *Node, err error) {
+	s = strings.TrimSpace(s)
 	s = RemBrackets(s)
 	var splitResult []string
 	n := &Node{
 		substring: s,
 	}
 	for _, ops := range oag.ops {
-		splitResult, err = SplitExpr(s, ops.name)
+		splitResult, err = SplitExpr(s, ops.op)
 		if err != nil {
 			return n, err
 		}
@@ -89,7 +90,7 @@ func Analize(s string, oag OperationAnalizerGroup) (res *Node, err error) {
 	return n, nil
 }
 
-//Traverse calculates result with traverceIterator func and
+//Traverse calculates result with Aggregate func
 func (n *Node) Traverse() (result float32, err error) {
 	if len(n.nodes) == 0 {
 		if n.substring == "" {
@@ -138,6 +139,8 @@ func SplitExpr(s string, sub string) ([]string, error) {
 	result = append(result, (s[pos:]))
 	return result, nil
 }
+
+//RemBrackets returns string with no () if they wrap original string
 func RemBrackets(s string) string {
 	if s == "" {
 		return s
@@ -151,7 +154,7 @@ func DefaultOAG() OperationAnalizerGroup {
 	return OperationAnalizerGroup{
 		ops: []OperationAnalizer{
 			{
-				name: "+",
+				op: "+",
 				Aggregate: func(x float32, first bool) func(y float32) float32 {
 					return func(y float32) float32 {
 						return x + y
@@ -159,7 +162,7 @@ func DefaultOAG() OperationAnalizerGroup {
 				},
 			},
 			{
-				name: "-",
+				op: "-",
 				Aggregate: func(x float32, first bool) func(y float32) float32 {
 					return func(y float32) float32 {
 						if first {
@@ -170,7 +173,7 @@ func DefaultOAG() OperationAnalizerGroup {
 				},
 			},
 			{
-				name: "*",
+				op: "*",
 				Aggregate: func(x float32, first bool) func(y float32) float32 {
 					return func(y float32) float32 {
 						if y == 0 {
@@ -181,7 +184,7 @@ func DefaultOAG() OperationAnalizerGroup {
 				},
 			},
 			{
-				name: "/",
+				op: "/",
 				Aggregate: func(x float32, first bool) func(y float32) float32 {
 					return func(y float32) float32 {
 						if first {

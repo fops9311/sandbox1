@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -21,84 +22,182 @@ func TestRemBrackets(t *testing.T) {
 
 }
 func TestSpiltExpr(t *testing.T) {
-	got := SplitExpr("2+3", "+")[0]
-	if got != "2" {
-		t.Fatal("Want 2 got ", got)
+	got, err := SplitExpr("2+3", "+")
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if got[0] != "2" {
+		t.Fatal("Want 2 got ", got[0])
 	} else {
-		t.Log("SplitExpr(\"2+3\", \"+\")[0]=", got)
+		t.Log("SplitExpr(\"2+3\", \"+\")[0]=", got[0])
 	}
 
-	got = SplitExpr("2+3", "+")[1]
-	if got != "3" {
-		t.Fatal("Want 3 got ", got)
+	got, err = SplitExpr("2+3", "+")
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if got[1] != "3" {
+		t.Fatal("Want 3 got ", got[1])
 	} else {
-		t.Log("SplitExpr(\"2+3\", \"+\")[1]=", got)
+		t.Log("SplitExpr(\"2+3\", \"+\")[1]=", got[1])
 	}
 
-	len := len(SplitExpr("2+3", "+"))
-	if len != 2 {
-		t.Fatal("Want 2 got ", len)
+	got, err = SplitExpr("2+3", "+")
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if len(got) != 2 {
+		t.Fatal("Want 2 got ", len(got))
 	} else {
-		t.Log("SplitExpr(\"2+3\", \"+\") len=", len)
+		t.Log("SplitExpr(\"2+3\", \"+\") len=", len(got))
 	}
 
-	got = SplitExpr("2+3-1", "+")[1]
-	if got != "3-1" {
-		t.Fatal("Want 3-1 got ", got)
+	got, err = SplitExpr("2+3-1", "+")
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if got[1] != "3-1" {
+		t.Fatal("Want 3-1 got ", got[1])
 	} else {
-		t.Log("SplitExpr(\"2+3-1\", \"+\")[1]=", got)
+		t.Log("SplitExpr(\"2+3-1\", \"+\")[1]=", got[1])
 	}
 }
 func TestNode(t *testing.T) {
-	OAG := OperationAnalizerGroup{
-		ops: []OperationAnalizer{
-			{
-				name: "+",
-				traverseInterator: func(x float32, first bool) func(y float32) float32 {
-					return func(y float32) float32 {
-						return x + y
-					}
-				},
-			},
-			{
-				name: "-",
-				traverseInterator: func(x float32, first bool) func(y float32) float32 {
-					return func(y float32) float32 {
-						if first {
-							return y + x
-						}
-						return -x + y
-					}
-				},
-			},
-			{
-				name: "*",
-				traverseInterator: func(x float32, first bool) func(y float32) float32 {
-					return func(y float32) float32 {
-						if y == 0 {
-							y = 1
-						}
-						return x * y
-					}
-				},
-			},
-			{
-				name: "/",
-				traverseInterator: func(x float32, first bool) func(y float32) float32 {
-					return func(y float32) float32 {
-						if first {
-							return x
-						}
-						return y / x
-					}
-				},
-			},
-		},
+	OAG := DefaultOAG()
+
+	testString := "1+2"
+	root, err := Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
 	}
-	testString := "1+1"
-	root := Analize(testString, OAG)
-	result := root.Traverse()
+	result, err := root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if result != 3 {
+		t.Fatal("1+2 should be 3 but result is ", result)
+	}
+
+	testString = "2*2"
+	root, err = Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	result, err = root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if result != 4 {
+		t.Fatal("2*2 should be 4 but result is ", result)
+	} else {
+		t.Log("2*2 result is ", result)
+	}
+
+	testString = "(2*2)"
+	root, err = Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	result, err = root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if result != 4 {
+		t.Fatal("(2*2) should be 4 but result is ", result)
+	} else {
+		t.Log("(2*2) result is ", result)
+	}
+
+	testString = "(2/2)"
+	root, err = Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	result, err = root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if result != 1 {
+		t.Fatal("(2/2) should be 1 but result is ", result)
+	} else {
+		t.Log("(2/2) result is ", result)
+	}
+
+	testString = "(4/2)"
+	root, err = Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	result, err = root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
 	if result != 2 {
-		t.Fatal("1+1 should be 2 but resul is ", result)
+		t.Fatal("(4/2) should be 2 but result is ", result)
+	} else {
+		t.Log("(4/2) result is ", result)
+	}
+
+	testString = "(1/2)"
+	root, err = Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	result, err = root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if result != 0.5 {
+		t.Fatal("(1/2) should be 0.5 but result is ", result)
+	} else {
+		t.Log("(1/2) result is ", result)
+	}
+
+	testString = "(1/0)"
+	root, err = Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	result, err = root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if fmt.Sprint(result) != "+Inf" {
+		t.Fatal("(1/0) should be +Inf but result is ", result)
+	} else {
+		t.Log("(1/0) result is ", result)
+	}
+
+	testString = "(1/0)+5"
+	root, err = Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	result, err = root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if fmt.Sprint(result) != "+Inf" {
+		t.Fatal("(1/0)+5 should be +Inf but result is ", result)
+	} else {
+		t.Log("(1/0)+5 result is ", result)
+	}
+
+	testString = "(1/0)*0"
+	root, err = Analize(testString, OAG)
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	result, err = root.Traverse()
+	if err != nil {
+		t.Fatal("Got err ", err.Error())
+	}
+	if fmt.Sprint(result) != "NaN" {
+		t.Fatal("(1/0)*0 should be NaN but result is ", result)
+	} else {
+		t.Log("(1/0)*0 result is ", result)
 	}
 }

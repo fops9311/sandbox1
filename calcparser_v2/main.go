@@ -10,58 +10,21 @@ import (
 )
 
 func main() {
-	OAG := OperationAnalizerGroup{
-		ops: []OperationAnalizer{
-			{
-				name: "+",
-				traverseInterator: func(x float32, first bool) func(y float32) float32 {
-					return func(y float32) float32 {
-						return x + y
-					}
-				},
-			},
-			{
-				name: "-",
-				traverseInterator: func(x float32, first bool) func(y float32) float32 {
-					return func(y float32) float32 {
-						if first {
-							return y + x
-						}
-						return -x + y
-					}
-				},
-			},
-			{
-				name: "*",
-				traverseInterator: func(x float32, first bool) func(y float32) float32 {
-					return func(y float32) float32 {
-						if y == 0 {
-							y = 1
-						}
-						return x * y
-					}
-				},
-			},
-			{
-				name: "/",
-				traverseInterator: func(x float32, first bool) func(y float32) float32 {
-					return func(y float32) float32 {
-						if first {
-							return x
-						}
-						return y / x
-					}
-				},
-			},
-		},
-	}
+	t, _ := Analize("1/0", DefaultOAG())
+	t.Traverse()
+	OAG := DefaultOAG()
 	e := echo.New()
 	e.GET("/", func(c echo.Context) error {
 		Expr := c.QueryParam("Expr")
-		str := fmt.Sprint((Analize(Expr, OAG).Traverse()))
-		fmt.Println(Expr)
-		fmt.Println(str)
-		return c.String(http.StatusOK, str)
+		node, err := Analize(Expr, OAG)
+		if err != nil {
+			return c.String(http.StatusOK, err.Error())
+		}
+		str, err := node.Traverse()
+		if err != nil {
+			return c.String(http.StatusOK, err.Error())
+		}
+		return c.String(http.StatusOK, fmt.Sprint(str))
 	})
 	e.Logger.Fatal(e.Start(":8000"))
 
@@ -87,74 +50,93 @@ func closingBracketPos(s string) (pos int, err error) {
 }
 
 type Node struct {
-	value             float32
-	substring         string
-	traverseInterator func(x float32, first bool) func(y float32) float32
-	err               error
-	nodes             []*Node
+	value     float32
+	substring string
+	Aggregate func(x float32, first bool) func(y float32) float32
+	nodes     []*Node
 }
 type OperationAnalizer struct {
-	name              string
-	traverseInterator func(x float32, first bool) func(y float32) float32
+	name      string
+	Aggregate func(x float32, first bool) func(y float32) float32
 }
 type OperationAnalizerGroup struct {
 	ops []OperationAnalizer
 }
 
-func Analize(s string, oag OperationAnalizerGroup) *Node {
+func Analize(s string, oag OperationAnalizerGroup) (res *Node, err error) {
+	s = RemBrackets(s)
 	var splitResult []string
 	n := &Node{
 		substring: s,
 	}
 	for _, ops := range oag.ops {
-		splitResult = SplitExpr(s, ops.name)
+		splitResult, err = SplitExpr(s, ops.name)
+		if err != nil {
+			return n, err
+		}
 		if len(splitResult) > 1 {
-			n.traverseInterator = ops.traverseInterator
+			n.Aggregate = ops.Aggregate
 			for _, sr := range splitResult {
-				n.nodes = append(n.nodes, Analize(sr, oag))
+				newN, err := Analize(sr, oag)
+				if err != nil {
+					return n, err
+				}
+				n.nodes = append(n.nodes, newN)
 			}
-			return n
+			return n, nil
 		}
 	}
-	return n
+	return n, nil
 }
 
-func (n *Node) Traverse() (result float32) {
+//Traverse calculates result with traverceIterator func and
+func (n *Node) Traverse() (result float32, err error) {
 	if len(n.nodes) == 0 {
-		fl64, _ := strconv.ParseFloat(n.substring, 32)
+		if n.substring == "" {
+			return 0, nil
+		}
+		fl64, err := strconv.ParseFloat(n.substring, 32)
+		if err != nil {
+			return 0, errors.New("parsing error use +-*/() and [0-9] only")
+		}
 		n.value = float32(fl64)
-		return n.value
+		return n.value, err
 	}
 	for i, pN := range n.nodes {
-		if n.traverseInterator != nil {
-			result = n.traverseInterator(pN.Traverse(), i == 0)(result)
+		if n.Aggregate != nil {
+			nodeResult, err := pN.Traverse()
+			if err != nil {
+				return result, err
+			}
+			result = n.Aggregate(nodeResult, i == 0)(result)
 		}
 	}
 	n.value = result
-	return result
+	return result, nil
 }
 
-//SplitExpr takes string and sub of +/-*
-func SplitExpr(s string, sub string) []string {
+//SplitExpr takes string and sub of +/-* returns array of substrings and error
+func SplitExpr(s string, sub string) ([]string, error) {
 	var pos int
+
 	exprBoundrySigns := "("
 	result := make([]string, 0)
 	for i := 0; i < len(s); i++ {
 		if s[i] == exprBoundrySigns[0] {
 			newPos, err := closingBracketPos(s[i:])
 			if err != nil {
-				panic(err)
+				return []string{}, err
 			}
 			i += newPos
 			continue
 		}
 		if s[i] == sub[0] {
-			result = append(result, RemBrackets(s[pos:i]))
+			result = append(result, (s[pos:i]))
 			pos = i + 1
 		}
 	}
-	result = append(result, RemBrackets(s[pos:]))
-	return result
+	result = append(result, (s[pos:]))
+	return result, nil
 }
 func RemBrackets(s string) string {
 	if s == "" {
@@ -164,4 +146,51 @@ func RemBrackets(s string) string {
 		return s[1 : len(s)-1]
 	}
 	return s
+}
+func DefaultOAG() OperationAnalizerGroup {
+	return OperationAnalizerGroup{
+		ops: []OperationAnalizer{
+			{
+				name: "+",
+				Aggregate: func(x float32, first bool) func(y float32) float32 {
+					return func(y float32) float32 {
+						return x + y
+					}
+				},
+			},
+			{
+				name: "-",
+				Aggregate: func(x float32, first bool) func(y float32) float32 {
+					return func(y float32) float32 {
+						if first {
+							return y + x
+						}
+						return -x + y
+					}
+				},
+			},
+			{
+				name: "*",
+				Aggregate: func(x float32, first bool) func(y float32) float32 {
+					return func(y float32) float32 {
+						if y == 0 {
+							y = 1
+						}
+						return x * y
+					}
+				},
+			},
+			{
+				name: "/",
+				Aggregate: func(x float32, first bool) func(y float32) float32 {
+					return func(y float32) float32 {
+						if first {
+							return x
+						}
+						return y / x
+					}
+				},
+			},
+		},
+	}
 }
